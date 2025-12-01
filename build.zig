@@ -10,6 +10,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const want_debug_features = (optimize == .Debug) or (optimize == .ReleaseSafe);
+
     const exe = b.addExecutable(.{
         .name = "_1brcZig",
         .root_module = b.createModule(.{
@@ -23,6 +25,13 @@ pub fn build(b: *std.Build) void {
             // definition if desireable (e.g. firmware for embedded devices).
             .target = target,
             .optimize = optimize,
+
+            .single_threaded = true,
+
+            .strip = !want_debug_features,
+            .stack_protector = !want_debug_features,
+            .error_tracing = want_debug_features,
+            .omit_frame_pointer = !want_debug_features,
             // List of modules available for import in source files part of the
             // root module.
             .imports = &.{
@@ -34,6 +43,8 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+
+    exe.link_gc_sections = true;
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
