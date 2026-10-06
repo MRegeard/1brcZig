@@ -28,10 +28,12 @@ pub fn build(b: *std.Build) void {
 
             .single_threaded = true,
 
-            .strip = !want_debug_features,
+           .strip = !want_debug_features,
+//            .strip = false, // for profiling
             .stack_protector = !want_debug_features,
             .error_tracing = want_debug_features,
             .omit_frame_pointer = !want_debug_features,
+//            .omit_frame_pointer = false, // for profiling
             // List of modules available for import in source files part of the
             // root module.
             .imports = &.{
