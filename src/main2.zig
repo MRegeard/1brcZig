@@ -3,6 +3,8 @@ const print = std.debug.print;
 
 const FILENAME = "data/measurements.txt";
 
+const buf_read_size: usize = 1024 * 1024 * 4;
+
 pub const Values = struct {
     min: i32,
     sum: i32,
@@ -18,6 +20,46 @@ pub const SortCtx = struct {
     }
 };
 
+const semi_vec32: @Vector(32, u8) = @splat(';');
+
+const CityTemp = struct {
+    city: []const u8,
+    temp: []const u8,
+};
+
+pub fn parseCityTemp(r: *std.Io.Reader) !?CityTemp {
+    const bytes = r.peek(128) catch |err| switch (err) {
+        error.EndOfStream => {
+            const remaining = r.buffer[r.seek..r.end];
+            if (remaining.len == 0) return null;
+            // For now, rely on takeDelimiter if near end of stream;
+            const city = (try r.takeDelimiter(';')).?;
+            const temp = (try r.takeDelimiter('\n')).?;
+            return .{ .city = city, .temp = temp };
+        },
+        else => |e| return e,
+    };
+    var start_idx: usize = 0;
+    while (true) {
+        const vec: @Vector(32, u8) = bytes[start_idx..][0..32].*;
+        const mask: u32 = @bitCast(vec == semi_vec32);
+        const pos = @ctz(mask);
+        if (pos == 32) {
+            start_idx += 32;
+            continue;
+        }
+        const city = bytes[0 .. start_idx + pos];
+        for (bytes[start_idx + pos + 4 .. start_idx + pos + 7], 0..) |byte, i| {
+            if (byte == '\n') {
+                const temp = bytes[start_idx + pos + 1 .. start_idx + pos + 4 + i];
+                r.toss(start_idx + pos + 5 + i);
+                return .{ .city = city, .temp = temp };
+            }
+        }
+        unreachable;
+    }
+}
+
 pub fn main() !void {
     @setRuntimeSafety(false);
     @setFloatMode(.optimized);
@@ -32,9 +74,30 @@ pub fn main() !void {
     const file = try std.Io.Dir.cwd().openFile(io, FILENAME, .{});
     defer file.close(io);
 
-    var read_buffer: [4096]u8 = undefined;
+    //const file_size: usize = @intCast((try file.stat(io)).size);
+
+    //const memmap = try std.posix.mmap(
+    //    null,
+    //    file_size,
+    //    .{ .READ = true },
+    //    .{ .TYPE = .PRIVATE },
+    //    file.handle,
+    //    0,
+    //    );
+
+    // var memmap: std.Io.File.MemoryMap = try .create(io, file, .{
+    //     .len = file_size,
+    //     .protection = .{ .read = true, .write = false },
+    //     .undefined_contents = false,
+    //     .populate = false,
+    //     .offset = 0,
+    // });
+    // defer memmap.destroy(io);
+
+    var read_buffer: [buf_read_size]u8 = undefined;
     var file_reader = file.reader(io, &read_buffer);
     const reader: *std.Io.Reader = &file_reader.interface;
+    try reader.fillMore();
 
     var keys = try std.ArrayList([]const u8).initCapacity(allocator, 10000);
     defer keys.deinit(allocator);
@@ -43,10 +106,14 @@ pub fn main() !void {
     defer map.deinit(allocator);
     try map.ensureTotalCapacity(allocator, 10000);
 
-    while (try reader.takeDelimiter('\n')) |line| {
-        const semi_idx = std.mem.findScalar(u8, line, ';').?;
-        const name = line[0..semi_idx];
-        const val = line[semi_idx + 1 ..];
+    // var spliter = std.mem.splitScalar(u8, memmap[0..file_size - 1], '\n');
+
+    while (try parseCityTemp(reader)) |city_temp| {
+        //const semi_idx = std.mem.findScalar(u8, line, ';').?;
+        //const name = line[0..semi_idx];
+        //const val = line[semi_idx + 1 ..];
+        const name = city_temp.city;
+        const val = city_temp.temp;
         const val_int = parseNumber(val);
 
         const gop = map.getOrPutAssumeCapacity(name);
@@ -81,7 +148,7 @@ pub fn main() !void {
         const denum: f64 = @floatFromInt(val.counts);
         const sum_f64: f64 = @floatFromInt(val.sum);
         const mean: f64 = sum_f64 / denum;
-        const mean_round: f64 = @round(mean) / 10.0;
+        const mean_round: f64 = @floor(mean + 0.5) / 10.0;
         const min_f64: f64 = @as(f64, @floatFromInt(val.min)) / 10.0;
         const max_f64: f64 = @as(f64, @floatFromInt(val.max)) / 10.0;
         if (pos < n_len - 1) {
