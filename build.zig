@@ -4,14 +4,23 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const want_debug_features = (optimize == .Debug) or (optimize == .ReleaseSafe);
+
     const exe = b.addExecutable(.{
         .name = "_1brcZig",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main2.zig"),
             .target = target,
             .optimize = optimize,
+            .single_threaded = true,
+            .strip = !want_debug_features,
+            .stack_protector = !want_debug_features,
+            .error_tracing = want_debug_features,
+            .omit_frame_pointer = !want_debug_features,
         }),
     });
+
+    exe.link_gc_sections = true;
 
     b.installArtifact(exe);
 
