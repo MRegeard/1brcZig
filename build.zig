@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const want_debug_features = (optimize == .Debug) or (optimize == .ReleaseSafe);
 
     const exe = b.addExecutable(.{
-        .name = "_1brcZig",
+        .name = "zillion",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main2.zig"),
             .target = target,
